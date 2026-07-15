@@ -14,8 +14,14 @@ const CALCOM_EVENT_TYPE_ID = process.env.CALCOM_EVENT_TYPE_ID || '4494139';
 const CALCOM_TIMEZONE = process.env.CALCOM_TIMEZONE || 'Europe/Madrid';
 const CALCOM_MCP_TOKEN = process.env.CALCOM_MCP_TOKEN;
 
+function normalizeCalcomBaseUrl(value) {
+  return String(value || "https://api.cal.com")
+    .replace(/\/+$/, "")
+    .replace(/\/v2$/, "");
+}
+
 const calcomApi = axios.create({
-  baseURL: CALCOM_BASE_URL,
+  baseURL: normalizeCalcomBaseUrl(CALCOM_BASE_URL),
   headers: {
     'Authorization': `Bearer ${CALCOM_API_KEY}`,
     'cal-api-version': '2024-09-04',
@@ -83,32 +89,37 @@ async function getAvailableSlots(args, debugInfo) {
       };
     }
 
+    const base = normalizeCalcomBaseUrl(CALCOM_BASE_URL);
+    const url = new URL(`${base}/v2/slots`);
+    url.searchParams.set("eventTypeId", String(eventTypeIdNumber));
+    url.searchParams.set("start", dateFrom);
+    url.searchParams.set("end", dateTo);
+    url.searchParams.set("timeZone", timeZone);
+    url.searchParams.set("format", "range");
+
     const slotsDebugInfo = {
       endpoint: "/v2/slots",
+      final_url_without_secret: url.toString(),
       eventTypeId: eventTypeIdNumber,
       start: dateFrom,
       end: dateTo,
       timeZone,
       format: "range",
-      calApiVersion: "2024-09-04"
+      calApiVersion: "2024-09-04",
+      calcomBaseUrlNormalized: base
     };
 
     try {
-      const response = await calcomApi.get('/v2/slots', {
-        params: {
-          eventTypeId: eventTypeIdNumber,
-          start: dateFrom,
-          end: dateTo,
-          timeZone: timeZone,
-          format: "range"
+      const response = await axios.get(url.toString(), {
+        headers: {
+          "Authorization": `Bearer ${CALCOM_API_KEY}`,
+          "cal-api-version": "2024-09-04"
         }
       });
 
-      const responseData = response.data?.data || response.data || {};
+      const data = response.data || {};
       const slots = [];
-      
-      // Normalize format="range"
-      for (const [date, daySlots] of Object.entries(responseData)) {
+      for (const daySlots of Object.values(data.data || {})) {
         if (Array.isArray(daySlots)) {
           for (const slot of daySlots) {
             slots.push({
@@ -215,6 +226,50 @@ async function cancelBooking(args) {
     return handleCalcomError(error, 'Error al cancelar la cita');
   }
 }
+
+app.get('/debug/calcom-slots-test', requireMcpAuth, async (req, res) => {
+  try {
+    const base = normalizeCalcomBaseUrl(CALCOM_BASE_URL);
+    const url = new URL(`${base}/v2/slots`);
+    url.searchParams.set("eventTypeId", "4494139");
+    url.searchParams.set("start", "2026-07-16");
+    url.searchParams.set("end", "2026-07-20");
+    url.searchParams.set("timeZone", "Europe/Madrid");
+    url.searchParams.set("format", "range");
+
+    const response = await axios.get(url.toString(), {
+      headers: {
+        "Authorization": `Bearer ${CALCOM_API_KEY}`,
+        "cal-api-version": "2024-09-04"
+      }
+    });
+
+    const data = response.data || {};
+    const slots = [];
+    for (const daySlots of Object.values(data.data || {})) {
+      if (Array.isArray(daySlots)) {
+        for (const slot of daySlots) {
+          slots.push({
+            start_time: slot.start,
+            end_time: slot.end,
+            timezone: "Europe/Madrid"
+          });
+        }
+      }
+    }
+
+    res.json({
+      status: response.status,
+      final_url_without_secret: url.toString(),
+      raw_count: slots.length,
+      sample_slots: slots.slice(0, 3)
+    });
+  } catch (error) {
+    res.status(500).json(handleCalcomError(error, 'Error en test aislado', {
+      final_url_without_secret: "https://api.cal.com/v2/slots?..."
+    }));
+  }
+});
 
 app.post('/mcp', requireMcpAuth, async (req, res) => {
   const body = req.body || {};

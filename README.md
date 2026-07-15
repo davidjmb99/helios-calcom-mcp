@@ -45,6 +45,14 @@ curl http://localhost:3000/health
 }
 ```
 
+### `GET /debug/calcom-slots-test`
+Ruta de diagnóstico para verificar que la comunicación con Cal.com funciona de manera directa. Requiere autorización del MCP.
+
+**Ejemplo de uso:**
+```bash
+curl http://localhost:3000/debug/calcom-slots-test -H "Authorization: Bearer tu_token_secreto_mcp"
+```
+
 ### `POST /mcp`
 Punto de entrada unificado para herramientas MCP. Requiere autorización.
 
