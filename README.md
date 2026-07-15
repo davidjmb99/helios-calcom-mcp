@@ -1,6 +1,6 @@
 # helios-calcom-mcp
 
-MCP wrapper controlado para conectar Cal.com con Hermes/Helios. Este servicio expone de manera segura y limitada un conjunto de herramientas de Cal.com:
+MCP wrapper controlado para conectar Cal.com con Hermes/Helios. Este servicio expone de manera segura y limitada un conjunto de herramientas de **Cal.com API v2**:
 
 1. `get_available_slots`
 2. `create_booking`

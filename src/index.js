@@ -42,6 +42,17 @@ app.get('/health', (req, res) => {
   res.json({ ok: true });
 });
 
+// Helper for safe error handling
+function handleCalcomError(error, actionMessage) {
+  return {
+    ok: false,
+    error_type: "calcom_api_error",
+    status: error.response?.status || 500,
+    message: actionMessage,
+    calcom_hint: error.response?.data?.message || "Ocurrió un error inesperado al contactar Cal.com"
+  };
+}
+
 // Tool handlers
 async function getAvailableSlots(args, debugInfo) {
   try {
@@ -59,34 +70,48 @@ async function getAvailableSlots(args, debugInfo) {
       };
     }
 
-    const response = await axios.get(`${CALCOM_BASE_URL}/v1/slots`, {
+    // Call v2 slots API
+    const response = await calcomApi.get('/v2/slots', {
       params: {
         eventTypeId: eventTypeId,
-        startTime: `${dateFrom}T00:00:00Z`,
-        endTime: `${dateTo}T23:59:59Z`,
-        timeZone: timezone,
-        apiKey: CALCOM_API_KEY 
+        start: dateFrom,
+        end: dateTo,
+        timeZone: timezone
       }
     });
 
-    const rawSlots = response.data.slots || response.data || {};
+    // V2 typically returns an object with a data property containing the slots structure, or sometimes an array.
+    // E.g. { status: "success", data: { "2024-08-13": [{time: "..."}] } } 
+    // We normalize this to a flat array.
+    const responseData = response.data?.data || response.data || {};
     const slots = [];
     
-    for (const [date, daySlots] of Object.entries(rawSlots)) {
-      if (Array.isArray(daySlots)) {
-        for (const slot of daySlots) {
-          slots.push({
-            start_time: slot.time || slot.startTime,
-            end_time: slot.endTime,
-            timezone: timezone
-          });
+    // Normalize slots (iterate over date keys if it's an object of arrays, or array of objects)
+    if (Array.isArray(responseData)) {
+        for (const slot of responseData) {
+            slots.push({
+                start_time: slot.time || slot.startTime || slot.start,
+                end_time: slot.endTime || slot.end,
+                timezone: timezone
+            });
         }
-      }
+    } else {
+        for (const [date, daySlots] of Object.entries(responseData)) {
+        if (Array.isArray(daySlots)) {
+            for (const slot of daySlots) {
+            slots.push({
+                start_time: slot.time || slot.startTime || slot.start,
+                end_time: slot.endTime || slot.end,
+                timezone: timezone
+            });
+            }
+        }
+        }
     }
 
-    return { ok: true, slots };
+    return { ok: true, slots, raw_count: slots.length };
   } catch (error) {
-    return { ok: false, error: error.response?.data?.message || 'Error fetching slots' };
+    return handleCalcomError(error, 'Error al obtener disponibilidad');
   }
 }
 
@@ -133,7 +158,7 @@ async function createBooking(args) {
 
     return { ok: true, booking: response.data };
   } catch (error) {
-    return { ok: false, error: error.response?.data?.message || 'Error creating booking' };
+    return handleCalcomError(error, 'Error al crear la cita');
   }
 }
 
@@ -153,7 +178,7 @@ async function rescheduleBooking(args) {
 
     return { ok: true, booking: response.data };
   } catch (error) {
-    return { ok: false, error: error.response?.data?.message || 'Error rescheduling booking' };
+    return handleCalcomError(error, 'Error al reprogramar la cita');
   }
 }
 
@@ -172,7 +197,7 @@ async function cancelBooking(args) {
 
     return { ok: true, result: response.data };
   } catch (error) {
-    return { ok: false, error: error.response?.data?.message || 'Error cancelling booking' };
+    return handleCalcomError(error, 'Error al cancelar la cita');
   }
 }
 
