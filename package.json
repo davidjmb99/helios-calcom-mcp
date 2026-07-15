@@ -1,0 +1,15 @@
+{
+  "name": "helios-calcom-mcp",
+  "version": "1.0.0",
+  "description": "MCP wrapper controlado para conectar Cal.com con Hermes/Helios",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
+  }
+}
