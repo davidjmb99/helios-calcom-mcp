@@ -18,7 +18,7 @@ const calcomApi = axios.create({
   baseURL: CALCOM_BASE_URL,
   headers: {
     'Authorization': `Bearer ${CALCOM_API_KEY}`,
-    'cal-api-version': '2024-08-13',
+    'cal-api-version': '2024-09-04',
     'Content-Type': 'application/json'
   }
 });
@@ -43,14 +43,18 @@ app.get('/health', (req, res) => {
 });
 
 // Helper for safe error handling
-function handleCalcomError(error, actionMessage) {
-  return {
+function handleCalcomError(error, actionMessage, debugInfo) {
+  const errRes = {
     ok: false,
     error_type: "calcom_api_error",
     status: error.response?.status || 500,
     message: actionMessage,
     calcom_hint: error.response?.data?.message || "Ocurrió un error inesperado al contactar Cal.com"
   };
+  if (debugInfo) {
+    errRes.debug = debugInfo;
+  }
+  return errRes;
 }
 
 // Tool handlers
@@ -58,8 +62,8 @@ async function getAvailableSlots(args, debugInfo) {
   try {
     const dateFrom = args.date_from || args.dateFrom || args.start_date || args.startDate;
     const dateTo = args.date_to || args.dateTo || args.end_date || args.endDate;
-    const timezone = args.timezone || args.timeZone || CALCOM_TIMEZONE;
-    const eventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
+    const timeZone = args.timezone || args.timeZone || CALCOM_TIMEZONE;
+    const rawEventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
 
     if (!dateFrom || !dateTo) {
       return { 
@@ -70,48 +74,59 @@ async function getAvailableSlots(args, debugInfo) {
       };
     }
 
-    // Call v2 slots API
-    const response = await calcomApi.get('/v2/slots', {
-      params: {
-        eventTypeId: eventTypeId,
-        start: dateFrom,
-        end: dateTo,
-        timeZone: timezone
-      }
-    });
-
-    // V2 typically returns an object with a data property containing the slots structure, or sometimes an array.
-    // E.g. { status: "success", data: { "2024-08-13": [{time: "..."}] } } 
-    // We normalize this to a flat array.
-    const responseData = response.data?.data || response.data || {};
-    const slots = [];
-    
-    // Normalize slots (iterate over date keys if it's an object of arrays, or array of objects)
-    if (Array.isArray(responseData)) {
-        for (const slot of responseData) {
-            slots.push({
-                start_time: slot.time || slot.startTime || slot.start,
-                end_time: slot.endTime || slot.end,
-                timezone: timezone
-            });
-        }
-    } else {
-        for (const [date, daySlots] of Object.entries(responseData)) {
-        if (Array.isArray(daySlots)) {
-            for (const slot of daySlots) {
-            slots.push({
-                start_time: slot.time || slot.startTime || slot.start,
-                end_time: slot.endTime || slot.end,
-                timezone: timezone
-            });
-            }
-        }
-        }
+    const eventTypeIdNumber = Number(rawEventTypeId);
+    if (isNaN(eventTypeIdNumber)) {
+      return {
+        ok: false,
+        error_type: "invalid_event_type_id",
+        message: "event_type_id must be a valid number"
+      };
     }
 
-    return { ok: true, slots, raw_count: slots.length };
+    const slotsDebugInfo = {
+      endpoint: "/v2/slots",
+      eventTypeId: eventTypeIdNumber,
+      start: dateFrom,
+      end: dateTo,
+      timeZone,
+      format: "range",
+      calApiVersion: "2024-09-04"
+    };
+
+    try {
+      const response = await calcomApi.get('/v2/slots', {
+        params: {
+          eventTypeId: eventTypeIdNumber,
+          start: dateFrom,
+          end: dateTo,
+          timeZone: timeZone,
+          format: "range"
+        }
+      });
+
+      const responseData = response.data?.data || response.data || {};
+      const slots = [];
+      
+      // Normalize format="range"
+      for (const [date, daySlots] of Object.entries(responseData)) {
+        if (Array.isArray(daySlots)) {
+          for (const slot of daySlots) {
+            slots.push({
+              start_time: slot.start,
+              end_time: slot.end,
+              timezone: timeZone
+            });
+          }
+        }
+      }
+
+      return { ok: true, slots, raw_count: slots.length };
+
+    } catch (apiError) {
+      return handleCalcomError(apiError, 'Error al obtener disponibilidad', slotsDebugInfo);
+    }
   } catch (error) {
-    return handleCalcomError(error, 'Error al obtener disponibilidad');
+    return { ok: false, error: 'Internal Error in getAvailableSlots' };
   }
 }
 
