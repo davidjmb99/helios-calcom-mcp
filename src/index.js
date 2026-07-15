@@ -143,14 +143,16 @@ async function getAvailableSlots(args, debugInfo) {
 
 async function createBooking(args) {
   try {
-    const eventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
-    const startTime = args.start_time || args.startTime;
+    const rawEventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
+    const eventTypeIdNumber = Number(rawEventTypeId);
+    
+    const startTime = args.start_time || args.startTime || args.start;
     const timezone = args.timezone || args.timeZone || CALCOM_TIMEZONE;
     
     const patientFirstName = args.patient_first_name || args.patientFirstName;
     const patientLastName = args.patient_last_name || args.patientLastName;
-    const patientEmail = args.patient_email || args.patientEmail;
-    const patientPhone = args.patient_phone || args.patientPhone;
+    const patientEmail = args.patient_email || args.patientEmail || args.email;
+    const patientPhone = args.patient_phone || args.patientPhone || args.phone;
     const notes = args.notes;
 
     const missing_fields = [];
@@ -168,23 +170,87 @@ async function createBooking(args) {
       };
     }
 
-    const response = await calcomApi.post('/v2/bookings', {
-      eventTypeId: parseInt(eventTypeId, 10),
+    if (isNaN(eventTypeIdNumber)) {
+      return {
+        ok: false,
+        error_type: "invalid_event_type_id",
+        message: "event_type_id must be a valid number"
+      };
+    }
+
+    console.log("[create_booking]", {
+      eventTypeId: eventTypeIdNumber,
+      start: startTime,
+      timezone,
+      hasFirstName: Boolean(patientFirstName),
+      hasLastName: Boolean(patientLastName),
+      hasEmail: Boolean(patientEmail),
+      hasPhone: Boolean(patientPhone)
+    });
+
+    const base = normalizeCalcomBaseUrl(CALCOM_BASE_URL);
+    const url = new URL(`${base}/v2/bookings`);
+
+    const payload = {
+      eventTypeId: eventTypeIdNumber,
       start: startTime,
       attendee: {
         name: `${patientFirstName} ${patientLastName}`,
         email: patientEmail,
-        phoneNumber: patientPhone,
-        timeZone: timezone
+        timeZone: timezone,
+        phoneNumber: patientPhone
       },
       metadata: {
+        source: "helios-calcom-mcp",
         notes
       }
-    });
+    };
 
-    return { ok: true, booking: response.data };
+    const debugInfo = {
+      endpoint: "/v2/bookings",
+      eventTypeId: eventTypeIdNumber,
+      start: startTime,
+      timezone: timezone,
+      attendee_email_present: Boolean(patientEmail),
+      attendee_phone_present: Boolean(patientPhone),
+      calApiVersion: "2024-08-13"
+    };
+
+    try {
+      const response = await axios.post(url.toString(), payload, {
+        headers: {
+          "Authorization": `Bearer ${CALCOM_API_KEY}`,
+          "cal-api-version": "2024-08-13",
+          "Content-Type": "application/json"
+        }
+      });
+
+      const data = response.data?.data || response.data || {};
+
+      return {
+        ok: true,
+        booking_id: data.id,
+        booking_uid: data.uid,
+        status: data.status,
+        title: data.title,
+        start_time: data.start,
+        end_time: data.end,
+        duration: data.duration,
+        timezone: data.attendees?.[0]?.timeZone || timezone,
+        event_type_id: data.eventTypeId,
+        event_type_slug: data.eventType?.slug || null,
+        attendee_name: data.attendees?.[0]?.name || null,
+        attendee_email: data.attendees?.[0]?.email || null,
+        attendee_phone: data.attendees?.[0]?.phoneNumber || null,
+        location: data.location || data.meetingUrl || null,
+        cancel_url: data.cancelUrl || data.cancel_url || null,
+        reschedule_url: data.rescheduleUrl || data.reschedule_url || null
+      };
+    } catch (apiError) {
+      return handleCalcomError(apiError, 'Error al crear la cita', debugInfo);
+    }
   } catch (error) {
-    return handleCalcomError(error, 'Error al crear la cita');
+    return { ok: false, error: 'Internal Error in createBooking' };
   }
 }
 

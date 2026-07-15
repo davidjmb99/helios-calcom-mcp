@@ -71,6 +71,25 @@ curl -X POST http://localhost:3000/mcp \
     }
   }'
 ```
+```
+
+**Ejemplo de uso (create_booking):**
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer tu_token_secreto_mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool": "create_booking",
+    "arguments": {
+      "start_time": "2026-07-16T10:00:00.000+02:00",
+      "patient_first_name": "Juan",
+      "patient_last_name": "Perez",
+      "patient_email": "juan@email.com",
+      "patient_phone": "+584120000000",
+      "notes": "Primera visita"
+    }
+  }'
+```
 
 **Respuestas de error por autenticación:**
 Si falta el token o es incorrecto:
