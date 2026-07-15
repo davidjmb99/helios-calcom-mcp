@@ -43,29 +43,35 @@ app.get('/health', (req, res) => {
 });
 
 // Tool handlers
-async function getAvailableSlots(params) {
+async function getAvailableSlots(args, debugInfo) {
   try {
-    const { date_from, date_to, timezone = CALCOM_TIMEZONE, event_type_id = CALCOM_EVENT_TYPE_ID } = params;
+    const dateFrom = args.date_from || args.dateFrom || args.start_date || args.startDate;
+    const dateTo = args.date_to || args.dateTo || args.end_date || args.endDate;
+    const timezone = args.timezone || args.timeZone || CALCOM_TIMEZONE;
+    const eventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
 
-    if (!date_from || !date_to) {
-      return { ok: false, error: 'date_from and date_to are required' };
+    if (!dateFrom || !dateTo) {
+      return { 
+        ok: false, 
+        error_type: "missing_required_fields",
+        missing_fields: ["date_from", "date_to"],
+        debug: debugInfo
+      };
     }
 
-    // According to v2 docs, slots endpoint expects startTime and endTime
     const response = await axios.get(`${CALCOM_BASE_URL}/v1/slots`, {
       params: {
-        eventTypeId: event_type_id,
-        startTime: `${date_from}T00:00:00Z`,
-        endTime: `${date_to}T23:59:59Z`,
+        eventTypeId: eventTypeId,
+        startTime: `${dateFrom}T00:00:00Z`,
+        endTime: `${dateTo}T23:59:59Z`,
         timeZone: timezone,
-        apiKey: CALCOM_API_KEY // v1 API key usage as fallback for slots if v2 is tricky, but let's try v2 standard slots if available. Wait, I will just use standard v1 slots since the prompt specified parameters similar to v1.
+        apiKey: CALCOM_API_KEY 
       }
     });
 
     const rawSlots = response.data.slots || response.data || {};
     const slots = [];
     
-    // Normalize slots (usually Cal.com returns a map of dates with arrays of slots)
     for (const [date, daySlots] of Object.entries(rawSlots)) {
       if (Array.isArray(daySlots)) {
         for (const slot of daySlots) {
@@ -84,25 +90,24 @@ async function getAvailableSlots(params) {
   }
 }
 
-async function createBooking(params) {
+async function createBooking(args) {
   try {
-    const { 
-      event_type_id = CALCOM_EVENT_TYPE_ID,
-      start_time,
-      timezone = CALCOM_TIMEZONE,
-      patient_first_name,
-      patient_last_name,
-      patient_email,
-      patient_phone,
-      notes
-    } = params;
+    const eventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
+    const startTime = args.start_time || args.startTime;
+    const timezone = args.timezone || args.timeZone || CALCOM_TIMEZONE;
+    
+    const patientFirstName = args.patient_first_name || args.patientFirstName;
+    const patientLastName = args.patient_last_name || args.patientLastName;
+    const patientEmail = args.patient_email || args.patientEmail;
+    const patientPhone = args.patient_phone || args.patientPhone;
+    const notes = args.notes;
 
     const missing_fields = [];
-    if (!start_time) missing_fields.push('start_time');
-    if (!patient_first_name) missing_fields.push('patient_first_name');
-    if (!patient_last_name) missing_fields.push('patient_last_name');
-    if (!patient_email) missing_fields.push('patient_email');
-    if (!patient_phone) missing_fields.push('patient_phone');
+    if (!startTime) missing_fields.push('start_time');
+    if (!patientFirstName) missing_fields.push('patient_first_name');
+    if (!patientLastName) missing_fields.push('patient_last_name');
+    if (!patientEmail) missing_fields.push('patient_email');
+    if (!patientPhone) missing_fields.push('patient_phone');
 
     if (missing_fields.length > 0) {
       return {
@@ -112,14 +117,13 @@ async function createBooking(params) {
       };
     }
 
-    // Create booking via Cal.com API v2
     const response = await calcomApi.post('/v2/bookings', {
-      eventTypeId: parseInt(event_type_id, 10),
-      start: start_time,
+      eventTypeId: parseInt(eventTypeId, 10),
+      start: startTime,
       attendee: {
-        name: `${patient_first_name} ${patient_last_name}`,
-        email: patient_email,
-        phoneNumber: patient_phone,
+        name: `${patientFirstName} ${patientLastName}`,
+        email: patientEmail,
+        phoneNumber: patientPhone,
         timeZone: timezone
       },
       metadata: {
@@ -133,16 +137,17 @@ async function createBooking(params) {
   }
 }
 
-async function rescheduleBooking(params) {
+async function rescheduleBooking(args) {
   try {
-    const { booking_id, new_start_time, timezone = CALCOM_TIMEZONE } = params;
+    const bookingId = args.booking_id || args.bookingId;
+    const newStartTime = args.new_start_time || args.newStartTime || args.start_time || args.startTime;
     
-    if (!booking_id || !new_start_time) {
+    if (!bookingId || !newStartTime) {
        return { ok: false, error: 'booking_id and new_start_time are required' };
     }
 
-    const response = await calcomApi.post(`/v2/bookings/${booking_id}/reschedule`, {
-      start: new_start_time,
+    const response = await calcomApi.post(`/v2/bookings/${bookingId}/reschedule`, {
+      start: newStartTime,
       reschedulingReason: "Rescheduled via API"
     });
 
@@ -152,15 +157,16 @@ async function rescheduleBooking(params) {
   }
 }
 
-async function cancelBooking(params) {
+async function cancelBooking(args) {
   try {
-    const { booking_id, reason = "Cancelled via API" } = params;
+    const bookingId = args.booking_id || args.bookingId;
+    const reason = args.reason || "Cancelled via API";
 
-    if (!booking_id) {
+    if (!bookingId) {
        return { ok: false, error: 'booking_id is required' };
     }
 
-    const response = await calcomApi.post(`/v2/bookings/${booking_id}/cancel`, {
+    const response = await calcomApi.post(`/v2/bookings/${bookingId}/cancel`, {
       cancellationReason: reason
     });
 
@@ -171,25 +177,51 @@ async function cancelBooking(params) {
 }
 
 app.post('/mcp', requireMcpAuth, async (req, res) => {
-  const { tool, parameters = {} } = req.body;
-  
+  const body = req.body || {};
+  const tool = body.tool || body.name || body.method || body.params?.name || body.params?.tool;
+
+  const args =
+    body.arguments ||
+    body.args ||
+    body.input ||
+    body.params?.arguments ||
+    body.params?.args ||
+    body.params?.input ||
+    body.params ||
+    body;
+
   if (!tool) {
     return res.status(400).json({ ok: false, error: 'Missing tool name in body' });
   }
 
+  const dateFrom = args.date_from || args.dateFrom || args.start_date || args.startDate;
+  const dateTo = args.date_to || args.dateTo || args.end_date || args.endDate;
+  const eventTypeId = args.event_type_id || args.eventTypeId || args.event_type || args.eventType || CALCOM_EVENT_TYPE_ID;
+
+  const debugInfo = {
+    tool,
+    body_keys: Object.keys(body),
+    arg_keys: Object.keys(args || {}),
+    has_date_from: Boolean(dateFrom),
+    has_date_to: Boolean(dateTo),
+    has_event_type_id: Boolean(eventTypeId)
+  };
+
+  console.log("[mcp_request]", debugInfo);
+
   let result;
   switch (tool) {
     case 'get_available_slots':
-      result = await getAvailableSlots(parameters);
+      result = await getAvailableSlots(args, debugInfo);
       break;
     case 'create_booking':
-      result = await createBooking(parameters);
+      result = await createBooking(args);
       break;
     case 'reschedule_booking':
-      result = await rescheduleBooking(parameters);
+      result = await rescheduleBooking(args);
       break;
     case 'cancel_booking':
-      result = await cancelBooking(parameters);
+      result = await cancelBooking(args);
       break;
     default:
       return res.status(404).json({ ok: false, error: 'Tool not found' });

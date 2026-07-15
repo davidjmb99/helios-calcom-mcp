@@ -55,9 +55,11 @@ curl -X POST http://localhost:3000/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "tool": "get_available_slots",
-    "parameters": {
+    "arguments": {
       "date_from": "2026-08-01",
-      "date_to": "2026-08-07"
+      "date_to": "2026-08-07",
+      "timezone": "Europe/Madrid",
+      "event_type_id": "4494139"
     }
   }'
 ```
