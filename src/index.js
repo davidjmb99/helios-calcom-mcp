@@ -276,20 +276,66 @@ async function rescheduleBooking(args) {
 
 async function cancelBooking(args) {
   try {
-    const bookingId = args.booking_id || args.bookingId;
-    const reason = args.reason || "Cancelled via API";
+    const bookingUid = args.booking_uid || args.bookingUid || args.uid || args.booking_id || args.bookingId;
+    const reason = args.reason || args.cancellation_reason || args.cancellationReason || "Cancelación solicitada";
 
-    if (!bookingId) {
-       return { ok: false, error: 'booking_id is required' };
+    if (!bookingUid) {
+       return { 
+         ok: false, 
+         error_type: "missing_required_fields",
+         missing_fields: ["booking_uid"]
+       };
     }
 
-    const response = await calcomApi.post(`/v2/bookings/${bookingId}/cancel`, {
-      cancellationReason: reason
+    console.log("[cancel_booking]", {
+      bookingUidPresent: Boolean(bookingUid),
+      reasonPresent: Boolean(reason)
     });
 
-    return { ok: true, result: response.data };
+    const base = normalizeCalcomBaseUrl(CALCOM_BASE_URL);
+    const url = new URL(`${base}/v2/bookings/${encodeURIComponent(bookingUid)}/cancel`);
+
+    const debugInfo = {
+      endpoint: "/v2/bookings/{booking_uid}/cancel",
+      booking_uid_present: Boolean(bookingUid),
+      reason_present: Boolean(reason),
+      calApiVersion: "2024-08-13"
+    };
+
+    try {
+      const response = await axios.post(url.toString(), {
+        cancellationReason: reason
+      }, {
+        headers: {
+          "Authorization": `Bearer ${CALCOM_API_KEY}`,
+          "cal-api-version": "2024-08-13",
+          "Content-Type": "application/json"
+        }
+      });
+
+      const data = response.data?.data || response.data || {};
+
+      return {
+        ok: true,
+        booking_id: data.id,
+        booking_uid: data.uid,
+        status: data.status,
+        cancellation_reason: data.cancellationReason || null,
+        title: data.title || null,
+        start_time: data.start || null,
+        end_time: data.end || null,
+        timezone: data.attendees?.[0]?.timeZone || null,
+        event_type_id: data.eventTypeId || null,
+        event_type_slug: data.eventType?.slug || null,
+        attendee_name: data.attendees?.[0]?.name || null,
+        attendee_email: data.attendees?.[0]?.email || null,
+        attendee_phone: data.attendees?.[0]?.phoneNumber || null
+      };
+    } catch (apiError) {
+      return handleCalcomError(apiError, 'Error al cancelar la cita', debugInfo);
+    }
   } catch (error) {
-    return handleCalcomError(error, 'Error al cancelar la cita');
+    return { ok: false, error: 'Internal Error in cancelBooking' };
   }
 }
 

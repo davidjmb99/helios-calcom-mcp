@@ -90,6 +90,21 @@ curl -X POST http://localhost:3000/mcp \
     }
   }'
 ```
+```
+
+**Ejemplo de uso (cancel_booking):**
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer tu_token_secreto_mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool": "cancel_booking",
+    "arguments": {
+      "booking_uid": "mxJHrmKRPACaRBm3fMSqoL",
+      "reason": "Prueba técnica Helios Cal.com MCP"
+    }
+  }'
+```
 
 **Respuestas de error por autenticación:**
 Si falta el token o es incorrecto:
