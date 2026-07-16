@@ -256,21 +256,81 @@ async function createBooking(args) {
 
 async function rescheduleBooking(args) {
   try {
-    const bookingId = args.booking_id || args.bookingId;
-    const newStartTime = args.new_start_time || args.newStartTime || args.start_time || args.startTime;
-    
-    if (!bookingId || !newStartTime) {
-       return { ok: false, error: 'booking_id and new_start_time are required' };
+    const bookingUid = args.booking_uid || args.bookingUid || args.uid || args.booking_id || args.bookingId;
+    const newStartTime = args.new_start_time || args.newStartTime || args.start_time || args.startTime || args.start;
+    const reason = args.reason || args.rescheduling_reason || args.reschedulingReason || "Reprogramación solicitada";
+
+    if (!bookingUid) {
+       return { 
+         ok: false, 
+         error_type: "missing_required_fields",
+         missing_fields: ["booking_uid"]
+       };
     }
 
-    const response = await calcomApi.post(`/v2/bookings/${bookingId}/reschedule`, {
-      start: newStartTime,
-      reschedulingReason: "Rescheduled via API"
+    if (!newStartTime) {
+       return { 
+         ok: false, 
+         error_type: "missing_required_fields",
+         missing_fields: ["new_start_time"]
+       };
+    }
+
+    console.log("[reschedule_booking]", {
+      bookingUidPresent: Boolean(bookingUid),
+      newStartTimePresent: Boolean(newStartTime),
+      reasonPresent: Boolean(reason)
     });
 
-    return { ok: true, booking: response.data };
+    const base = normalizeCalcomBaseUrl(CALCOM_BASE_URL);
+    const url = new URL(`${base}/v2/bookings/${encodeURIComponent(bookingUid)}/reschedule`);
+
+    const debugInfo = {
+      endpoint: "/v2/bookings/{booking_uid}/reschedule",
+      booking_uid_present: Boolean(bookingUid),
+      new_start_time_present: Boolean(newStartTime),
+      reason_present: Boolean(reason),
+      calApiVersion: "2024-08-13"
+    };
+
+    try {
+      const response = await axios.post(url.toString(), {
+        start: newStartTime,
+        reschedulingReason: reason
+      }, {
+        headers: {
+          "Authorization": `Bearer ${CALCOM_API_KEY}`,
+          "cal-api-version": "2024-08-13",
+          "Content-Type": "application/json"
+        }
+      });
+
+      const data = response.data?.data || response.data || {};
+
+      return {
+        ok: true,
+        booking_id: data.id,
+        booking_uid: data.uid,
+        status: data.status,
+        rescheduled_from_uid: data.rescheduledFromUid || null,
+        rescheduling_reason: data.reschedulingReason || null,
+        title: data.title || null,
+        start_time: data.start || null,
+        end_time: data.end || null,
+        duration: data.duration || null,
+        timezone: data.attendees?.[0]?.timeZone || CALCOM_TIMEZONE || null,
+        event_type_id: data.eventTypeId || null,
+        event_type_slug: data.eventType?.slug || null,
+        attendee_name: data.attendees?.[0]?.name || null,
+        attendee_email: data.attendees?.[0]?.email || null,
+        attendee_phone: data.attendees?.[0]?.phoneNumber || null,
+        location: data.location || data.meetingUrl || null
+      };
+    } catch (apiError) {
+      return handleCalcomError(apiError, 'Error al reprogramar la cita', debugInfo);
+    }
   } catch (error) {
-    return handleCalcomError(error, 'Error al reprogramar la cita');
+    return { ok: false, error: 'Internal Error in rescheduleBooking' };
   }
 }
 

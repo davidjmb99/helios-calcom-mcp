@@ -105,6 +105,22 @@ curl -X POST http://localhost:3000/mcp \
     }
   }'
 ```
+```
+
+**Ejemplo de uso (reschedule_booking):**
+```bash
+curl -X POST http://localhost:3000/mcp \
+  -H "Authorization: Bearer tu_token_secreto_mcp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "tool": "reschedule_booking",
+    "arguments": {
+      "booking_uid": "daRbVeDLxSdS5eGK2KabAD",
+      "new_start_time": "2026-07-17T11:00:00.000+02:00",
+      "reason": "Prueba técnica Helios Cal.com MCP"
+    }
+  }'
+```
 
 **Respuestas de error por autenticación:**
 Si falta el token o es incorrecto:
