@@ -1,6 +1,7 @@
 const express = require('express');
 const axios = require('axios');
 const dotenv = require('dotenv');
+const { llaveDeLaCabecera, mismaLlave } = require('./llave');
 
 dotenv.config();
 
@@ -36,8 +37,8 @@ const requireMcpAuth = (req, res, next) => {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const token = authHeader.split(' ')[1];
-  if (token !== CALCOM_MCP_TOKEN) {
+  // EN TIEMPO CONSTANTE, y sin token configurado no entra nadie (28-oct-2026).
+  if (!mismaLlave(llaveDeLaCabecera(req), CALCOM_MCP_TOKEN)) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   
